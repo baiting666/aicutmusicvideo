@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>门店屏幕总控台</title>
+    <link rel="stylesheet" href="../styles.css" />
+  </head>
+  <body>
+    <header>
+      <div class="flex-between">
+        <div>
+          <h1>门店屏幕总控台</h1>
+          <small>实时调度每一块屏幕的播放内容、裁切与播放策略</small>
+        </div>
+        <button id="refresh-btn">刷新数据</button>
+      </div>
+    </header>
+    <main>
+      <section>
+        <h2>创建屏幕</h2>
+        <form id="screen-form" class="grid-two">
+          <div>
+            <label for="screen-name">屏幕名称</label>
+            <input id="screen-name" name="name" required placeholder="吧台主屏" />
+          </div>
+          <div>
+            <label for="screen-location">所在区域</label>
+            <input id="screen-location" name="location" placeholder="大厅 / 包间" />
+          </div>
+          <div>
+            <label for="screen-width">宽度 (px)</label>
+            <input id="screen-width" type="number" name="width" required value="1920" />
+          </div>
+          <div>
+            <label for="screen-height">高度 (px)</label>
+            <input id="screen-height" type="number" name="height" required value="1080" />
+          </div>
+          <div>
+            <label for="screen-orientation">方向</label>
+            <select id="screen-orientation" name="orientation">
+              <option value="landscape">横屏</option>
+              <option value="portrait">竖屏</option>
+            </select>
+          </div>
+          <div>
+            <label for="screen-brightness">亮度 (0-100)</label>
+            <input id="screen-brightness" type="number" name="brightness" min="0" max="100" value="80" />
+          </div>
+          <div style="grid-column: 1 / -1;">
+            <button type="submit">添加屏幕</button>
+          </div>
+        </form>
+      </section>
+
+      <section>
+        <h2>上传素材</h2>
+        <form id="asset-form" class="grid-two">
+          <div>
+            <label for="asset-name">素材名称</label>
+            <input id="asset-name" name="name" required placeholder="氛围视频" />
+          </div>
+          <div>
+            <label for="asset-type">类型</label>
+            <select id="asset-type" name="asset_type">
+              <option value="video">视频</option>
+              <option value="image">图片</option>
+              <option value="stream">直播流</option>
+            </select>
+          </div>
+          <div>
+            <label for="asset-url">资源地址 (URL)</label>
+            <input id="asset-url" name="source_uri" required placeholder="https://cdn.example.com/ambient.mp4" />
+          </div>
+          <div>
+            <label for="asset-duration">时长 (秒，可选)</label>
+            <input id="asset-duration" type="number" name="duration_seconds" min="1" />
+          </div>
+          <div>
+            <label for="asset-width">宽度 (可选)</label>
+            <input id="asset-width" type="number" name="width" min="1" />
+          </div>
+          <div>
+            <label for="asset-height">高度 (可选)</label>
+            <input id="asset-height" type="number" name="height" min="1" />
+          </div>
+          <div style="grid-column: 1 / -1;">
+            <button type="submit">保存素材</button>
+          </div>
+        </form>
+      </section>
+
+      <section>
+        <h2>创建播放列表</h2>
+        <form id="playlist-form" class="grid-two">
+          <div>
+            <label for="playlist-name">名称</label>
+            <input id="playlist-name" name="name" required placeholder="周末酒吧氛围" />
+          </div>
+          <div>
+            <label for="playlist-mode">播放模式</label>
+            <select id="playlist-mode" name="playback_mode">
+              <option value="sequential">顺序播放</option>
+              <option value="loop_list">循环列表</option>
+              <option value="loop_single">单素材循环</option>
+            </select>
+          </div>
+          <div>
+            <label for="playlist-duration">默认时长 (秒)</label>
+            <input id="playlist-duration" type="number" name="default_duration_seconds" min="1" value="30" />
+          </div>
+          <div style="grid-column: 1 / -1;">
+            <label>播放条目 (从下方素材中选择)</label>
+            <div id="playlist-items" class="card"></div>
+          </div>
+          <div style="grid-column: 1 / -1;">
+            <button type="submit">创建播放列表</button>
+          </div>
+        </form>
+      </section>
+
+      <section>
+        <div class="flex-between">
+          <h2>屏幕总览</h2>
+          <div class="badge" id="screen-count">0 块屏幕</div>
+        </div>
+        <table class="table" id="screen-table">
+          <thead>
+            <tr>
+              <th>名称</th>
+              <th>区域</th>
+              <th>尺寸</th>
+              <th>播放列表</th>
+              <th>裁切</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+    </main>
+
+    <template id="playlist-item-template">
+      <div class="card" data-asset-id="">
+        <div class="flex-between">
+          <div>
+            <strong class="asset-name"></strong>
+            <div class="asset-meta"></div>
+          </div>
+          <button type="button" class="add-to-playlist">加入</button>
+        </div>
+      </div>
+    </template>
+
+    <script>
+      const apiBase = window.location.origin.replace(/\/$/, "");
+
+      const notify = (message) => {
+        const toast = document.createElement("div");
+        toast.textContent = message;
+        toast.style.position = "fixed";
+        toast.style.top = "1.5rem";
+        toast.style.right = "1.5rem";
+        toast.style.padding = "0.75rem 1.25rem";
+        toast.style.background = "rgba(14, 165, 233, 0.9)";
+        toast.style.color = "#0f172a";
+        toast.style.borderRadius = "0.75rem";
+        toast.style.boxShadow = "0 10px 25px rgba(14, 165, 233, 0.45)";
+        toast.style.zIndex = 9999;
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 2600);
+      };
+
+      async function fetchJSON(url, options = {}) {
+        const response = await fetch(url, {
+          headers: { "Content-Type": "application/json" },
+          ...options,
+        });
+        if (!response.ok) {
+          const detail = await response.text();
+          throw new Error(detail || "请求失败");
+        }
+        return await response.json();
+      }
+
+      const screenForm = document.querySelector("#screen-form");
+      const assetForm = document.querySelector("#asset-form");
+      const playlistForm = document.querySelector("#playlist-form");
+      const screenTableBody = document.querySelector("#screen-table tbody");
+      const screenCount = document.querySelector("#screen-count");
+      const playlistItemsContainer = document.querySelector("#playlist-items");
+      const playlistTemplate = document.querySelector("#playlist-item-template");
+      const refreshButton = document.querySelector("#refresh-btn");
+
+      const state = {
+        assets: [],
+        screens: [],
+        playlistSelections: [],
+      };
+
+      function renderAssets() {
+        playlistItemsContainer.innerHTML = "";
+        state.assets.forEach((asset) => {
+          const fragment = playlistTemplate.content.cloneNode(true);
+          const card = fragment.querySelector(".card");
+          card.dataset.assetId = asset.id;
+          fragment.querySelector(".asset-name").textContent = `${asset.name}`;
+          fragment.querySelector(".asset-meta").textContent = `${asset.asset_type.toUpperCase()} · ${asset.source_uri}`;
+          fragment.querySelector(".add-to-playlist").addEventListener("click", () => {
+            addAssetToPlaylist(asset.id, asset.name);
+          });
+          playlistItemsContainer.appendChild(fragment);
+        });
+      }
+
+      function addAssetToPlaylist(assetId, assetName) {
+        const order = state.playlistSelections.length;
+        state.playlistSelections.push({ asset_id: assetId, order_index: order });
+        notify(`已将 ${assetName} 加入列表`);
+      }
+
+      function renderScreens() {
+        screenTableBody.innerHTML = "";
+        state.screens.forEach((screen) => {
+          const row = document.createElement("tr");
+          row.innerHTML = `
+            <td>${screen.name}</td>
+            <td>${screen.location || "-"}</td>
+            <td>${screen.width} × ${screen.height}</td>
+            <td>${screen.assigned_playlist_id || "未分配"}</td>
+            <td>${screen.crop_settings ? `${screen.crop_settings.width}×${screen.crop_settings.height}` : "--"}</td>
+            <td><button data-screen-id="${screen.id}" class="assign-playlist">分配播放列表</button></td>
+          `;
+          screenTableBody.appendChild(row);
+        });
+        screenCount.textContent = `${state.screens.length} 块屏幕`;
+        screenTableBody.querySelectorAll(".assign-playlist").forEach((btn) => {
+          btn.addEventListener("click", () => showAssignmentDialog(parseInt(btn.dataset.screenId, 10)));
+        });
+      }
+
+      async function refreshAll() {
+        const [assets, screens] = await Promise.all([
+          fetchJSON(`${apiBase}/assets`),
+          fetchJSON(`${apiBase}/screens`),
+        ]);
+        state.assets = assets;
+        state.screens = screens;
+        state.playlistSelections = [];
+        renderAssets();
+        renderScreens();
+      }
+
+      screenForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const formData = new FormData(screenForm);
+        const payload = Object.fromEntries(formData.entries());
+        payload.width = Number(payload.width);
+        payload.height = Number(payload.height);
+        payload.brightness = payload.brightness ? Number(payload.brightness) : null;
+        try {
+          await fetchJSON(`${apiBase}/screens`, {
+            method: "POST",
+            body: JSON.stringify(payload),
+          });
+          screenForm.reset();
+          notify("屏幕已创建");
+          await refreshAll();
+        } catch (error) {
+          notify(error.message);
+        }
+      });
+
+      assetForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const formData = new FormData(assetForm);
+        const payload = Object.fromEntries(formData.entries());
+        payload.duration_seconds = payload.duration_seconds ? Number(payload.duration_seconds) : null;
+        payload.width = payload.width ? Number(payload.width) : null;
+        payload.height = payload.height ? Number(payload.height) : null;
+        try {
+          await fetchJSON(`${apiBase}/assets`, {
+            method: "POST",
+            body: JSON.stringify(payload),
+          });
+          assetForm.reset();
+          notify("素材已保存");
+          await refreshAll();
+        } catch (error) {
+          notify(error.message);
+        }
+      });
+
+      playlistForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (!state.playlistSelections.length) {
+          notify("请至少选择一个素材");
+          return;
+        }
+        const formData = new FormData(playlistForm);
+        const payload = Object.fromEntries(formData.entries());
+        payload.default_duration_seconds = payload.default_duration_seconds
+          ? Number(payload.default_duration_seconds)
+          : null;
+        payload.items = state.playlistSelections.map((item, index) => ({
+          asset_id: item.asset_id,
+          order_index: index,
+        }));
+        try {
+          await fetchJSON(`${apiBase}/playlists`, {
+            method: "POST",
+            body: JSON.stringify(payload),
+          });
+          playlistForm.reset();
+          state.playlistSelections = [];
+          notify("播放列表创建成功");
+        } catch (error) {
+          notify(error.message);
+        }
+      });
+
+      async function showAssignmentDialog(screenId) {
+        const playlistId = prompt("输入要分配的播放列表 ID");
+        if (!playlistId) return;
+        const fitMode = prompt("输入适配模式 contain/cover/fill (默认 cover)") || "cover";
+        const cropWidth = prompt("裁切宽度(px)，可留空");
+        const cropHeight = prompt("裁切高度(px)，可留空");
+        let crop = null;
+        if (cropWidth && cropHeight) {
+          crop = {
+            x: 0,
+            y: 0,
+            width: Number(cropWidth),
+            height: Number(cropHeight),
+            anchor: "center",
+          };
+        }
+        const payload = {
+          playlist_id: Number(playlistId),
+          fit_mode: fitMode,
+          crop_settings: crop,
+        };
+        try {
+          await fetchJSON(`${apiBase}/screens/${screenId}/playlist`, {
+            method: "POST",
+            body: JSON.stringify(payload),
+          });
+          notify("指令已下发");
+          await refreshAll();
+        } catch (error) {
+          notify(error.message);
+        }
+      }
+
+      refreshButton.addEventListener("click", refreshAll);
+      refreshAll().catch((error) => console.error(error));
+    </script>
+  </body>
+</html>
